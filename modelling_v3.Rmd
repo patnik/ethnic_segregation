@@ -1,0 +1,474 @@
+---
+title: "Untitled"
+author: "Nikos Patias"
+date: "02/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(sf)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(quantreg)
+library(faraway) # for vif
+library(summarytools)
+```
+
+
+```{r}
+all_data <- readRDS("all_data_2011.rds")
+all_data$dec_15 <- as.numeric(all_data$dec_15)
+```
+
+
+
+```{r}
+
+before_72 <- c("BP_PRE_1900", "BP_1900_1918", "BP_1919_1929", "BP_1930_1939",
+                "BP_1945_1954", "BP_1955_1964", "BP_1965_1972")
+after_72 <- c("BP_1973_1982", "BP_1983_1992", "BP_1993_1999", "BP_2000_2009",
+                "BP_2010_2015")
+
+all_data <- all_data %>% 
+  mutate(MODE1_TYPE_regroup = case_when(
+    MODE1_TYPE %in% before_72 ~"before72",
+    MODE1_TYPE %in% after_72 ~"after72"))
+
+all_data$MODE1_TYPE <- as.factor(all_data$MODE1_TYPE)
+all_data$MODE1_TYPE_regroup <- as.factor(all_data$MODE1_TYPE_regroup)
+```
+
+
+
+# Normalise all the variables
+
+```{r}
+# normalize <- function(x)
+# {
+#   return((x- mean(x)) /sd(x))
+# }
+
+normalize <- function(x)
+{
+  return((x- min(x)) /(max(x)-min(x)))
+}
+
+
+replaceMissing <- function(v) replace(v, is.na(v), 0)
+
+normalised_data <- all_data %>%
+    select(LSOA11_CD, LAD17NM, RGN11NM, GRP_LABEL, MODE1_TYPE_regroup,
+           pred_group, norm_divergence_2011, norm_divergence_2001,
+           divergence_2011, norm_divergence_2011,
+           divergence_2001, norm_divergence_2001,
+           Age_20_44_per, Age_45_64_per, Age_65_plus_per,
+           Social.rented_per, Private.rented_per,
+           No.cars.or.vans.in.household_per,
+           Economically.active..Unemployed_per, Economically.inactive..Long.term.sick.or.disabled_per,
+           Density..number.of.persons.per.hectare., 
+           No.central.heating_per,
+           AVG_LSOA, gpp_dist, gamb_dist, leis_dist, blue_dist, off_dist, tobac_dist, green_pas, green_act, 
+           no2_mean, pm10_mean, so2_mean, dec_15,
+           per_house, per_flat, per_outdoorspace,
+           LQ_mixed_cat_2011, LQ_asian_cat_2011, LQ_black_cat_2011, LQ_other_cat_2011,
+           LQ_mixed_cat_2001, LQ_asian_cat_2001, LQ_black_cat_2001, LQ_other_cat_2001) %>%
+    drop_na(Social.rented_per, Private.rented_per,
+            Age_20_44_per, Age_45_64_per, Age_65_plus_per,
+           No.cars.or.vans.in.household_per,
+           Economically.active..Unemployed_per, Economically.inactive..Long.term.sick.or.disabled_per,
+           Density..number.of.persons.per.hectare., 
+           No.central.heating_per,
+           AVG_LSOA, gpp_dist, gamb_dist, leis_dist, blue_dist, off_dist, tobac_dist, green_pas, green_act,
+           no2_mean, pm10_mean, so2_mean, dec_15,
+           per_house, per_flat, per_outdoorspace) %>% 
+    mutate(Social.rented_per = normalize(Social.rented_per)) %>%
+    mutate(Private.rented_per = normalize(Private.rented_per)) %>%
+    mutate(No.cars.or.vans.in.household_per = normalize(No.cars.or.vans.in.household_per)) %>%
+    mutate(Economically.active..Unemployed_per = normalize(Economically.active..Unemployed_per)) %>%
+    mutate(Economically.inactive..Long.term.sick.or.disabled_per = normalize(Economically.inactive..Long.term.sick.or.disabled_per)) %>%
+    mutate(Density..number.of.persons.per.hectare. = normalize(Density..number.of.persons.per.hectare.)) %>%
+    mutate(No.central.heating_per = normalize(No.central.heating_per)) %>%
+    mutate(AVG_LSOA = normalize(AVG_LSOA)) %>%
+    mutate(Age_20_44_per = normalize(Age_20_44_per)) %>%
+    mutate(Age_45_64_per = normalize(Age_45_64_per)) %>%
+    mutate(Age_65_plus_per = normalize(Age_65_plus_per)) %>%
+    mutate(gpp_dist = normalize(gpp_dist)) %>%
+    mutate(gamb_dist = normalize(gamb_dist)) %>%
+    mutate(leis_dist = normalize(leis_dist)) %>%
+    mutate(blue_dist = normalize(blue_dist)) %>%
+    mutate(off_dist = normalize(off_dist)) %>%
+    mutate(tobac_dist = normalize(tobac_dist)) %>%
+    mutate(green_pas = normalize(green_pas)) %>%
+    mutate(green_act = normalize(green_act)) %>%
+    mutate(no2_mean = normalize(no2_mean)) %>%
+    mutate(pm10_mean = normalize(pm10_mean)) %>%
+    mutate(so2_mean = normalize(so2_mean)) %>%
+    mutate(dec_15 = normalize(dec_15)) %>%
+    mutate(per_house = normalize(per_house)) %>%
+    mutate(per_flat = normalize(per_flat)) %>%
+    mutate(per_outdoorspace = normalize(per_outdoorspace)) %>%
+    mutate_all(funs(replaceMissing))
+
+
+
+```
+## columns to be used
+
+
+```{r}
+mod2 <- c("norm_divergence_2011", "norm_divergence_2001", "pred_group", "divergence_2011", "divergence_2001", "Social.rented_per", "Private.rented_per",
+          "Age_20_44_per", "Age_45_64_per", "Age_65_plus_per",
+           "No.cars.or.vans.in.household_per",
+           "Economically.active..Unemployed_per", "Economically.inactive..Long.term.sick.or.disabled_per",
+           "Density..number.of.persons.per.hectare.", 
+           "No.central.heating_per",
+            "gpp_dist", "gamb_dist", "leis_dist", "blue_dist", "off_dist", "tobac_dist", "green_pas", "green_act", "no2_mean", "pm10_mean", "so2_mean", 
+          "dec_15", "MODE1_TYPE_regroup",
+          "per_house", "per_flat", "per_outdoorspace",
+           "LQ_mixed_cat_2011", "LQ_asian_cat_2011", "LQ_black_cat_2011", "LQ_other_cat_2011",
+           "LQ_mixed_cat_2001", "LQ_asian_cat_2001", "LQ_black_cat_2001", "LQ_other_cat_2001"
+)
+
+
+
+data2 <- subset(normalised_data, select=mod2)
+
+nrow(data2)
+
+
+
+```
+
+
+```{r}
+dfSummary(data2$divergence_2011)
+dfSummary(data2$norm_divergence_2011)
+```
+
+
+
+```{r}
+# treat the dataset as dataframe
+#st_geometry(all_data) <- NULL
+```
+
+# Create a density plot for divergence
+
+```{r}
+ggplot(normalised_data, aes(x=divergence_2011)) + 
+  geom_density()
+
+ggplot(normalised_data, aes(x=norm_divergence_2011)) + 
+  geom_density()
+
+
+```
+
+
+# Explain what variables will be used (how do I group them?)
+
+
+
+# Explore correlation between variables (plots and coefficients)
+
+```{r}
+
+# pairs(data1, col = "dodgerblue") # it can work with fewer variables
+```
+
+
+```{r}
+#round(cor(data1), 2)
+
+```
+
+# Run VIF for multicolinearity
+```{r}
+# define the reference category for the building age dummy
+data2 <- within(data2, MODE1_TYPE_regroup <- relevel(MODE1_TYPE_regroup, ref = "before72"))
+
+
+col_model <-  lm(formula = norm_divergence_2011 ~ norm_divergence_2001 + Age_20_44_per + Age_45_64_per + Age_65_plus_per +
+                   Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas +
+             green_act + no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace,
+           data = data2)
+
+vif(col_model)
+
+summary(col_model)
+
+```
+
+
+```{r}
+fm <- rq(formula = norm_divergence_2011 ~ norm_divergence_2001 +Age_20_44_per + Age_45_64_per + Age_65_plus_per +
+           Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + 
+           gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas + green_act +
+           no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace,
+         data = data2, tau = 1:9/10)
+# plot(fm)
+# plot(summary(fm)) # with confidence intervals
+
+
+png("OLS_model.png",units="in", width=8, height=7, res=300)
+plot(summary(fm))
+dev.off() # Close the file
+
+#summary(fm)
+
+#https://stackoverflow.com/questions/46261833/plotting-quantile-regression-by-variables-in-a-single-page
+
+# interpretation: the red line on the plot indicate the OLS regression coefficient. So we can see if the top or lowe quantiles exceed that
+# https://bookdown.org/wfoote01/primer_quantile-regression/primer_quantile-regression.html
+
+# Each black dot is the slope coefficient for the quantile indicated on the x axis. The red lines are the least squares estimate and its confidence interval. You can see how the lower and upper quartiles are well beyond the least squares estimate.
+
+```
+
+
+```{r}
+eq <- norm_divergence_2011 ~ norm_divergence_2001 + Age_20_44_per + Age_45_64_per + Age_65_plus_per + 
+  Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + 
+           gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas + green_act +
+           no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace
+
+m1o <- rq(formula = eq, data = data2, tau = 0.1)
+m2o <- rq(formula = eq, data = data2, tau = 0.5)
+m3o <- rq(formula = eq, data = data2, tau = 0.9)
+```
+
+
+```{r}
+library(jtools)
+library(huxtable)
+
+```
+
+
+```{r}
+# https://jtools.jacob-long.com/articles/summ.html
+
+# summ(m1o, confint = TRUE, digits = 3, scale = TRUE)
+# summ(col_model, confint = TRUE, digits = 3)
+
+```
+
+
+
+
+
+
+```{r}
+# export_summs(col_model, m1o, m2o, m3o)
+
+export_summs(col_model, m1o, m2o, m3o, to.file = "docx", file.name = "Decile_models_all.docx")
+
+```
+
+
+
+## Now I will use the LQ for each ethnic group to run separate regressions
+
+
+```{r}
+
+# convert the data to binary categories to run the model
+data2 <- data2 %>% 
+  mutate(LQ_mixed_cat_2011_binary = case_when(LQ_mixed_cat_2011 == "less_diverse" ~ 0,
+                                       LQ_mixed_cat_2011 == "more_diverse" ~ 1),
+         LQ_asian_cat_2011_binary = case_when(LQ_asian_cat_2011 == "less_diverse" ~ 0,
+                                       LQ_asian_cat_2011 == "more_diverse" ~ 1),
+         LQ_black_cat_2011_binary = case_when(LQ_black_cat_2011 == "less_diverse" ~ 0,
+                                       LQ_black_cat_2011 == "more_diverse" ~ 1),
+         LQ_other_cat_2011_binary = case_when(LQ_other_cat_2011 == "less_diverse" ~ 0,
+                                       LQ_other_cat_2011 == "more_diverse" ~ 1))
+
+# and convert the LQ in 2001 to factors
+data2$LQ_mixed_cat_2001 <- as.factor(data2$LQ_mixed_cat_2001)
+data2$LQ_asian_cat_2001 <- as.factor(data2$LQ_asian_cat_2001)
+data2$LQ_black_cat_2001 <- as.factor(data2$LQ_black_cat_2001)
+data2$LQ_other_cat_2001 <- as.factor(data2$LQ_other_cat_2001)
+
+
+
+# define the equations for each ethnic group model
+
+eq_mixed <- LQ_mixed_cat_2011_binary ~ LQ_mixed_cat_2001 + Age_20_44_per + Age_45_64_per + Age_65_plus_per +
+  Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + 
+           gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas + green_act +
+           no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace
+
+eq_asian <- LQ_asian_cat_2011_binary ~ LQ_asian_cat_2001 + Age_20_44_per + Age_45_64_per + Age_65_plus_per +
+  Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + 
+           gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas + green_act +
+           no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace
+
+eq_black <- LQ_black_cat_2011_binary ~ LQ_black_cat_2001 + Age_20_44_per + Age_45_64_per + Age_65_plus_per +
+  Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + 
+           gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas + green_act +
+           no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace
+
+eq_other <- LQ_other_cat_2011_binary ~ LQ_other_cat_2001 + Age_20_44_per + Age_45_64_per + Age_65_plus_per +
+  Social.rented_per + Private.rented_per + 
+           Economically.active..Unemployed_per + Economically.inactive..Long.term.sick.or.disabled_per + 
+           Density..number.of.persons.per.hectare. +  
+           No.central.heating_per + 
+           gpp_dist + gamb_dist + leis_dist + blue_dist + off_dist + tobac_dist + green_pas + green_act +
+           no2_mean + pm10_mean + so2_mean + dec_15 +
+             per_house + per_outdoorspace
+
+
+# and run binary logistic models
+
+mixed_model <-  glm(formula = eq_mixed, data = data2, family=binomial(link="logit"), na.action=na.exclude)
+asian_model <-  glm(formula = eq_asian, data = data2, family=binomial(link="logit"), na.action=na.exclude)
+black_model <-  glm(formula = eq_black, data = data2, family=binomial(link="logit"), na.action=na.exclude)
+other_model <-  glm(formula = eq_other, data = data2, family=binomial(link="logit"), na.action=na.exclude)
+
+
+
+
+summary(mixed_model)
+
+
+data2 %>% 
+  group_by(LQ_mixed_cat_2011_binary) %>% 
+  tally()
+data2 %>% 
+  group_by(LQ_asian_cat_2011_binary) %>% 
+  tally()
+data2 %>% 
+  group_by(LQ_black_cat_2011_binary) %>% 
+  tally()
+data2 %>% 
+  group_by(LQ_other_cat_2011_binary) %>% 
+  tally()
+
+```
+
+```{r}
+
+export_summs(mixed_model, asian_model, black_model, other_model, to.file = "docx", file.name = "logit_group_models.docx")
+```
+
+
+
+
+
+
+## Now I will split the dataset based on the predominant groups and run separate models for each group
+
+
+```{r}
+pred_mixed <- subset(data2, pred_group == "Mixed.multiple.ethnic.groups_per_2011")
+pred_asian <- subset(data2, pred_group == "Asian.Asian.British_per_2011")
+pred_black <- subset(data2, pred_group == "Black.African.Caribbean.Black.British_per_2011")
+pred_other <- subset(data2, pred_group == "Other.ethnic.group_per_2011")
+
+```
+
+
+
+```{r}
+# OLS regression for each group
+mixed_lm <- lm(formula = eq, data = pred_mixed)
+asian_lm <- lm(formula = eq, data = pred_asian)
+black_lm <- lm(formula = eq, data = pred_black)
+other_lm <- lm(formula = eq, data = pred_other)
+```
+
+
+```{r}
+export_summs(mixed_lm, asian_lm, black_lm, other_lm, to.file = "docx", file.name = "ethn_groups_models.docx")
+```
+
+
+```{r}
+# Quantile regression for Asian
+fm_asian <- rq(formula = eq, data = pred_asian, tau = 1:9/10)
+# plot(fm)
+# plot(summary(fm)) # with confidence intervals
+
+
+png("plot_asian.png",units="in", width=8, height=7, res=300)
+plot(summary(fm_asian))
+dev.off() # Close the file
+
+```
+
+
+```{r}
+# Quantile regression for Balck
+fm_black <- rq(formula = eq, data = pred_black, tau = 1:9/10)
+# plot(fm)
+# plot(summary(fm)) # with confidence intervals
+
+
+png("plot_black.png",units="in", width=8, height=7, res=300)
+plot(summary(fm_black)) # mfrow(2,2)  to define how many rows and columns
+dev.off() # Close the file
+
+```
+
+```{r}
+# Quantile regression for Balck
+fm_mixed <- rq(formula = eq, data = pred_mixed, tau = 1:9/10)
+# plot(fm)
+# plot(summary(fm)) # with confidence intervals
+
+
+png("plot_mixed.png",units="in", width=8, height=7, res=300)
+plot(summary(fm_mixed)) # mfrow(2,2)  to define how many rows and columns
+dev.off() # Close the file
+
+```
+
+
+```{r}
+m_low_asian <- rq(formula = eq, data = pred_asian, tau = 0.1)
+m_high_asian <- rq(formula = eq, data = pred_asian, tau = 0.9)
+
+m_low_black <- rq(formula = eq, data = pred_black, tau = 0.1)
+m_high_black <- rq(formula = eq, data = pred_black, tau = 0.9)
+
+m_low_mixed <- rq(formula = eq, data = pred_mixed, tau = 0.1)
+m_high_mixed <- rq(formula = eq, data = pred_mixed, tau = 0.9)
+
+```
+
+
+```{r}
+export_summs(m_low_asian, m_high_asian, m_low_black, m_high_black,
+             m_low_mixed, m_high_mixed, to.file = "docx", file.name = "decomposed_models.docx")
+```
