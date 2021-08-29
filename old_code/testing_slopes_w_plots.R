@@ -469,10 +469,10 @@ asian_mlm3 <- lmer(asian_eq3, data = normalised_asian)
 black_mlm3 <- lmer(black_eq3, data = normalised_black)
 other_mlm3 <- lmer(other_eq3, data = normalised_other)
 
-tab_model(mixed_mlm1, mixed_mlm2, mixed_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, show.aic = TRUE,  file = "mixed_mlm3.html")
-tab_model(asian_mlm1, asian_mlm2, asian_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, show.aic = TRUE, file = "asian_mlm3.html")
-tab_model(black_mlm1, black_mlm2, black_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, show.aic = TRUE, file = "black_mlm3.html")
-tab_model(other_mlm1, other_mlm2, other_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, show.aic = TRUE, file = "other_mlm3.html")
+tab_model(mixed_mlm1, mixed_mlm2, mixed_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, file = "mixed_mlm3.html")
+tab_model(asian_mlm1, asian_mlm2, asian_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, file = "asian_mlm3.html")
+tab_model(black_mlm1, black_mlm2, black_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, file = "black_mlm3.html")
+tab_model(other_mlm1, other_mlm2, other_mlm3, show.se = TRUE, show.loglik = TRUE, show.ci = FALSE, file = "other_mlm3.html")
 
 
 # use the summary to write up the tvalue column in the supplementary material
@@ -660,19 +660,6 @@ dev.off() # Close the file
 
 
 
-p1 <- slope_plot(mixed_re, "Mixed ethnic group")
-p2 <- slope_plot(asian_re, "Asian ethnic group")
-p3 <- slope_plot(black_re, "Black ethnic group")
-p4 <- slope_plot(other_re, "Other ethnic group")
-
-library(patchwork)
-
-
-re_combined <- (p1 + p2) / (p3 + p4)
-
-png("re_combined.png", units="in", width=12, height=6, res=300)
-re_combined
-dev.off() # Close the file
 
 
 # random slopes function --------------------------------------------------
@@ -695,11 +682,10 @@ slope_plot <- function(slope_data, plot_title) {
   p <- ggplot() +
     geom_point(data=slope_data, aes(x = median, y = groupID), color = "gray75") +
     geom_pointrange(data=subset(slope_data, sig == TRUE), aes(x = median, y = groupID, xmin=lower, xmax=upper), size = 0.3) +
-    facet_wrap(~term, scales="free_x", nrow = 1) +
+    facet_wrap(~term, scales="free_x") +
     geom_vline(xintercept=0, color = "red") +
-    labs(title = plot_title, y = "", x= "") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45))
+    labs(title = plot_title, y = "cities") +
+    theme_minimal()
   
   
   return(p)
@@ -756,9 +742,9 @@ fe_plot_by_model <- function(model1, model2, model3, plot_title) {
   mixed_fe2 = FEsim(model2)
   mixed_fe3 = FEsim(model3)
   
-  mixed_fe1$model <- "SE"
-  mixed_fe2$model <- "SE + UA"
-  mixed_fe3$model <- "SE + UA + RS"
+  mixed_fe1$model <- "Random Intercept 1"
+  mixed_fe2$model <- "Random Intercept 2"
+  mixed_fe3$model <- "Random Slope"
   
   combined = rbind(mixed_fe1, mixed_fe2, mixed_fe3)
   
@@ -808,10 +794,14 @@ fe_plot_by_model <- function(model1, model2, model3, plot_title) {
     geom_pointrange(data=subset(combined, sig == TRUE), aes(x = median, y = model, xmin=lower, xmax=upper), size = 0.3) +
     facet_wrap(~term) +
     geom_vline(xintercept=0, color = "red") +
-    labs(title = plot_title, y = "") +
+    labs(title = plot_title, y = "cities") +
     theme_minimal()
   
   return(p)
 }
   
+
+
+
+
 
